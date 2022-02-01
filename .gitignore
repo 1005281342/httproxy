@@ -1,7 +1,5 @@
 go.sum
 
-grpchttp
-
 polaris
 
 .gitignore

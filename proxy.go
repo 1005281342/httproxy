@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -15,6 +18,13 @@ import (
 const errMsgKey = "Err_msg"
 
 var gConsumer api.ConsumerAPI
+
+// Res 返回
+type Res struct {
+	Code   int
+	Result bool
+	Info   interface{}
+}
 
 func main() {
 	var consumer, err = api.NewConsumerAPI()
@@ -114,6 +124,36 @@ func New() *httputil.ReverseProxy {
 		if res.StatusCode != http.StatusOK {
 			return errors.New(fmt.Sprintf("业务方错误，信息：%s", res.Status))
 		}
+
+		var (
+			err        error
+			oldPayload []byte
+		)
+		if oldPayload, err = ioutil.ReadAll(res.Body); err != nil {
+			return err
+		}
+
+		var info = make(map[string]interface{})
+		if err = json.Unmarshal(oldPayload, &info); err != nil {
+			return err
+		}
+
+		var (
+			newPayLoadRes = Res{
+				Result: true,
+				Code:   http.StatusOK,
+				Info:   info,
+			}
+			newPayLoad []byte
+		)
+
+		if newPayLoad, err = json.Marshal(newPayLoadRes); err != nil {
+			return err
+		}
+		res.Body = ioutil.NopCloser(bytes.NewBuffer(newPayLoad))
+		res.ContentLength = int64(len(newPayLoad))
+		res.Header.Set("Content-Length", fmt.Sprint(len(newPayLoad)))
+
 		return nil
 	}
 

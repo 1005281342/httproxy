@@ -5,7 +5,6 @@ Etcd:
   - 127.0.0.1:2379
   Key: hello.Hello
 Mode: test
-HttpPort: 18087
 
 Telemetry:
   Name: hello.Hello

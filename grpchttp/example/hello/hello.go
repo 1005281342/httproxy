@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/1005281342/httproxy/grpchttp"
 	"github.com/1005281342/httproxy/grpchttp/example/hello/hello"
@@ -37,11 +38,13 @@ func main() {
 
 	var mux http.ServeMux
 	httpgrpc.HandleServices(mux.HandleFunc, "/", reg, nil, nil)
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", c.HttpPort))
+	lis, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
 		panic(err)
 	}
-	logx.Infof("http port: %s", lis.Addr().String())
+	var a = strings.Split(lis.Addr().String(), ":")
+	var sPort = a[len(a)-1]
+	logx.Infof("http port: %s", sPort)
 
 	httpServer := http.Server{Handler: &mux}
 	go httpServer.Serve(lis)
@@ -56,7 +59,7 @@ func main() {
 	})
 	defer s.Stop()
 
-	var lo = fmt.Sprintf("0.0.0.0:%d", c.HttpPort)
+	var lo = "0.0.0.0:" + sPort
 	// 注册服务
 	err = polaris.RegitserService(polaris.NewPolarisConfig(lo,
 		polaris.WithServiceName(c.Etcd.Key),

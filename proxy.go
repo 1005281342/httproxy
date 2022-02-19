@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -15,9 +16,15 @@ import (
 	"github.com/polarismesh/polaris-go/api"
 )
 
-const errMsgKey = "Err_msg"
+const (
+	errMsgKey = "Err_msg"
+	snSuffix  = "-http"
+)
 
-var gConsumer api.ConsumerAPI
+var (
+	namespace string
+	gConsumer api.ConsumerAPI
+)
 
 // Res 返回
 type Res struct {
@@ -26,7 +33,14 @@ type Res struct {
 	Info   interface{}
 }
 
+func initArgs() {
+	flag.StringVar(&namespace, "namespace", "default", "namespace")
+}
+
 func main() {
+	initArgs()
+	flag.Parse()
+
 	var consumer, err = api.NewConsumerAPI()
 	if err != nil {
 		panic(err)
@@ -84,8 +98,17 @@ func New() *httputil.ReverseProxy {
 			return
 		}
 		var serviceName = infos[0]
+		if len(serviceName) < len(snSuffix) {
+			serviceName += snSuffix
+		} else if serviceName[len(serviceName)-len(snSuffix):] != snSuffix {
+			serviceName += snSuffix
+		}
+
+		infos[0] = serviceName[:len(serviceName)-len(snSuffix)]
+		req.URL.Path = strings.Join(infos, sepSymbol)
+
 		getOneRequest := &api.GetOneInstanceRequest{}
-		getOneRequest.Namespace = "default"
+		getOneRequest.Namespace = namespace
 		getOneRequest.Service = serviceName
 		oneInstResp, err := gConsumer.GetOneInstance(getOneRequest)
 		if err != nil {
@@ -98,6 +121,11 @@ func New() *httputil.ReverseProxy {
 			return
 		}
 		log.Printf("instance getOneInstance is %s:%d \n", instance.GetHost(), instance.GetPort())
+
+		if instance.GetProtocol() != "http" {
+			errMsg = "instance Protocol not is http"
+			return
+		}
 
 		var lo = fmt.Sprintf("http://%s:%d/", instance.GetHost(), instance.GetPort())
 		var target, tErr = url.Parse(lo)

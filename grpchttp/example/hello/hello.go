@@ -59,13 +59,26 @@ func main() {
 	})
 	defer s.Stop()
 
-	var lo = "0.0.0.0:" + sPort
-	// 注册服务
-	err = polaris.RegitserService(polaris.NewPolarisConfig(lo,
+	const (
+		namespaceZRPC = "default"
+		namespaceHTTP = "default"
+	)
+
+	// 注册zrpc服务
+	if err = polaris.RegitserService(polaris.NewPolarisConfig(c.ListenOn,
 		polaris.WithServiceName(c.Etcd.Key),
-		polaris.WithNamespace("default"),
-		polaris.WithHeartbeatInervalSec(5)))
-	if err != nil {
+		polaris.WithNamespace(namespaceZRPC),
+		polaris.WithHeartbeatInervalSec(5))); err != nil {
+		logx.Errorf("注册zrpc到Polaris失败")
+	}
+
+	// 注册http服务
+	var lo = "0.0.0.0:" + sPort
+	if err = polaris.RegitserService(polaris.NewPolarisConfig(lo,
+		polaris.WithServiceName(c.Etcd.Key+"-http"),
+		polaris.WithNamespace(namespaceHTTP),
+		polaris.WithHeartbeatInervalSec(5),
+		polaris.WithProtocol("http"))); err != nil {
 		panic(err)
 	}
 

@@ -1,10 +1,9 @@
-package main
+package httproxy
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -18,12 +17,10 @@ import (
 
 const (
 	errMsgKey = "Err_msg"
-	snSuffix  = "-http"
-)
+	ErrMsgKey = errMsgKey
 
-var (
-	namespace string
-	gConsumer api.ConsumerAPI
+	snSuffix = "-http"
+	SnSuffix = snSuffix
 )
 
 // Res 返回
@@ -33,33 +30,7 @@ type Res struct {
 	Info   interface{}
 }
 
-func initArgs() {
-	flag.StringVar(&namespace, "namespace", "default", "namespace")
-}
-
-func main() {
-	initArgs()
-	flag.Parse()
-
-	var consumer, err = api.NewConsumerAPI()
-	if err != nil {
-		panic(err)
-	}
-	gConsumer = consumer
-
-	go func() {
-		http.HandleFunc("/err", errHandle)
-		http.ListenAndServe("127.0.0.1:2334", nil)
-	}()
-	http.ListenAndServe("127.0.0.1:2333", New())
-}
-
-func errHandle(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, r.Header.Get(errMsgKey)) //这个写入到w的是输出到客户端的
-	r.Header.Del(errMsgKey)
-}
-
-func New() *httputil.ReverseProxy {
+func New(namespace string, gConsumer api.ConsumerAPI) *httputil.ReverseProxy {
 
 	director := func(req *http.Request) {
 

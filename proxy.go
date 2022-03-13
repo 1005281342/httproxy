@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -30,6 +31,32 @@ type Res struct {
 	Info   interface{}
 }
 
+var errPort string
+
+func init() {
+	go func() {
+		http.HandleFunc("/err", errHandle)
+
+		lis, err := net.Listen("tcp", "0.0.0.0:0")
+		if err != nil {
+			panic(err)
+		}
+		var a = strings.Split(lis.Addr().String(), ":")
+		errPort = a[len(a)-1]
+
+		http.Serve(lis, nil)
+	}()
+}
+
+func errHandle(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, r.Header.Get(errMsgKey)) //这个写入到w的是输出到客户端的
+	r.Header.Del(errMsgKey)
+}
+
+type errBody struct {
+	Err string `json:"err"`
+}
+
 func New(namespace string, gConsumer api.ConsumerAPI) *httputil.ReverseProxy {
 
 	director := func(req *http.Request) {
@@ -37,9 +64,13 @@ func New(namespace string, gConsumer api.ConsumerAPI) *httputil.ReverseProxy {
 		var errMsg string
 		defer func() {
 			if errMsg != "" {
-				var target, _ = url.Parse("http://127.0.0.1:2334/err")
+				var target, _ = url.Parse(fmt.Sprintf("http://127.0.0.1:%s/err", errPort))
 				req.URL = target
-				req.Header.Add(errMsgKey, strings.Trim(errMsg, " "))
+
+				var eb = errBody{Err: errMsg}
+				var e, _ = json.Marshal(eb)
+
+				req.Header.Add(errMsgKey, string(e))
 			}
 		}()
 

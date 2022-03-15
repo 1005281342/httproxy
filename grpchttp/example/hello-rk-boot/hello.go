@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
+	_ "embed"
 	"flag"
 	"fmt"
+
 	"github.com/1005281342/httproxy/grpchttp"
-	"github.com/1005281342/httproxy/grpchttp/example/hello/hello"
-	"github.com/1005281342/httproxy/grpchttp/example/hello/internal/config"
-	"github.com/1005281342/httproxy/grpchttp/example/hello/internal/server"
-	"github.com/1005281342/httproxy/grpchttp/example/hello/internal/svc"
+	"github.com/1005281342/httproxy/grpchttp/example/hello-rk-boot/hello"
+	"github.com/1005281342/httproxy/grpchttp/example/hello-rk-boot/internal/config"
+	"github.com/1005281342/httproxy/grpchttp/example/hello-rk-boot/internal/server"
+	"github.com/1005281342/httproxy/grpchttp/example/hello-rk-boot/internal/svc"
+	"github.com/rookie-ninja/rk-entry/v2/entry"
+	"github.com/rookie-ninja/rk-zero/boot"
 	"github.com/zeromicro/go-zero/core/conf"
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/core/service"
@@ -19,6 +24,9 @@ import (
 
 var configFile = flag.String("f", "etc/hello.yaml", "the config file")
 
+//go:embed boot.yaml
+var boot []byte
+
 func main() {
 	flag.Parse()
 
@@ -27,7 +35,30 @@ func main() {
 	ctx := svc.NewServiceContext(c)
 	srv := server.NewHelloServer(ctx)
 
-	var sPort = grpchttp.RegisterAndStart(srv, &hello.ServiceDesc, 0)
+	var httpPort uint64
+	go func() {
+		// Bootstrap preload entries
+		rkentry.BootstrapPreloadEntryYAML(boot)
+
+		// Bootstrap zero entry from boot config
+		res := rkzero.RegisterZeroEntryYAML(boot)
+
+		// Get ZeroEntry
+		zeroEntry := res["go-zero"].(*rkzero.ZeroEntry)
+		httpPort = zeroEntry.Port
+
+		// 注册路由
+		grpchttp.RegisterWithGoZero(srv, &hello.ServiceDesc, zeroEntry.Server)
+
+		// Bootstrap zero entry
+		zeroEntry.Bootstrap(context.Background())
+
+		// Wait for shutdown signal
+		rkentry.GlobalAppCtx.WaitForShutdownSig()
+
+		// Interrupt zero entry
+		zeroEntry.Interrupt(context.Background())
+	}()
 
 	s := zrpc.MustNewServer(c.RpcServerConf, func(grpcServer *grpc.Server) {
 		hello.RegisterHelloServer(grpcServer, srv)
@@ -53,7 +84,8 @@ func main() {
 	}
 
 	// 注册http服务
-	var lo = "0.0.0.0:" + sPort
+	var lo = fmt.Sprintf("0.0.0.0:%d", httpPort)
+	fmt.Printf("http: %s \n", lo)
 	if err = polaris.RegitserService(polaris.NewPolarisConfig(lo,
 		polaris.WithServiceName(c.Etcd.Key+"-http"),
 		polaris.WithNamespace(namespaceHTTP),

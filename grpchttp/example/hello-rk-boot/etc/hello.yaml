@@ -1,0 +1,13 @@
+Name: hello.Hello # Name命名规范为proto协议`go_package.service`
+ListenOn: 0.0.0.0:7079
+Etcd:
+  Hosts:
+  - 127.0.0.1:2379
+  Key: hello.Hello
+Mode: test
+
+Telemetry:
+  Name: hello.Hello
+  Endpoint: http://127.0.0.1:14268/api/traces
+  Sampler: 1.0
+  Batcher: jaeger

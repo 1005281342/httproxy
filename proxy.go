@@ -150,7 +150,7 @@ func New(namespace string, gConsumer api.ConsumerAPI, opts ...Option) *httputil.
 				// 转发到了errHandler说明一次请求处理失败了
 				// TODO 细分错误分别上报
 				// 用户输入参数不符合规范或系统服务故障的错误次数++
-				cfg.Report(pathKey(req.URL.Path, true))
+				cfg.Report(pathKey(req.URL.Path, false))
 			}
 		}()
 

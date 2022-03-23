@@ -2,6 +2,7 @@ package httproxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/polarismesh/polaris-go/api"
+	rkentry "github.com/rookie-ninja/rk-entry/v2/entry"
+	rkprom "github.com/rookie-ninja/rk-prom"
 )
 
 const (
@@ -26,9 +29,9 @@ const (
 
 // Res 返回
 type Res struct {
-	Code   int
-	Result bool
-	Info   interface{}
+	Code   int         `json:"code"`
+	Result bool        `json:"result"`
+	Info   interface{} `json:"info"`
 }
 
 var errPort string
@@ -57,12 +60,84 @@ type errBody struct {
 	Err string `json:"err"`
 }
 
-func New(namespace string, gConsumer api.ConsumerAPI) *httputil.ReverseProxy {
+type OptionConf struct {
+	promBootYamlPath string
+	metricsSet       *rkprom.MetricsSet
+	namespace        string
+}
+
+type Option func(cfg *OptionConf)
+
+func (o *OptionConf) Report(pathKey string) {
+	if o.metricsSet == nil {
+		return
+	}
+
+	var c = o.metricsSet.GetCounterWithValues(pathKey)
+	if c != nil {
+		c.Inc()
+		return
+	}
+
+	if err := o.metricsSet.RegisterCounter(pathKey); err != nil {
+		log.Printf("注册%s的Counter失败:%+v", pathKey, err)
+		return
+	}
+	o.metricsSet.GetCounterWithValues(pathKey).Inc()
+}
+
+func WithProm(namespace string, path string) Option {
+
+	return func(cfg *OptionConf) {
+		cfg.promBootYamlPath = path
+		if namespace == "" {
+			cfg.namespace = path
+		}
+
+		if cfg.metricsSet == nil {
+			go func() {
+				maps := rkprom.RegisterPromEntriesWithConfig(path)
+
+				entry := maps[rkprom.PromEntryNameDefault].(*rkprom.PromEntry)
+				cfg.metricsSet = rkprom.NewMetricsSet(cfg.namespace, "httproxy", entry.Registerer)
+
+				entry.Bootstrap(context.Background())
+
+				rkentry.GlobalAppCtx.WaitForShutdownSig()
+
+				// stop server
+				entry.Interrupt(context.Background())
+			}()
+		}
+	}
+}
+
+func pathKey(path string, failed bool) string {
+	const (
+		suffixFailed = "_failed"
+	)
+	var pk = strings.Replace(strings.Trim(path, "/"), "/", "_", -1)
+	pk = strings.Replace(pk, ".", "", -1)
+	pk = strings.Replace(pk, "-", "", -1)
+	if failed {
+		pk += suffixFailed
+	}
+	return pk
+}
+
+func New(namespace string, gConsumer api.ConsumerAPI, opts ...Option) *httputil.ReverseProxy {
+	var cfg = &OptionConf{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
 
 	director := func(req *http.Request) {
 
 		var errMsg string
 		defer func() {
+			// 总请求次数++
+			cfg.Report(pathKey(req.URL.Path, false))
+
 			if errMsg != "" {
 				var target, _ = url.Parse(fmt.Sprintf("http://127.0.0.1:%s/err", errPort))
 				req.URL = target
@@ -71,6 +146,11 @@ func New(namespace string, gConsumer api.ConsumerAPI) *httputil.ReverseProxy {
 				var e, _ = json.Marshal(eb)
 
 				req.Header.Add(errMsgKey, string(e))
+
+				// 转发到了errHandler说明一次请求处理失败了
+				// TODO 细分错误分别上报
+				// 用户输入参数不符合规范或系统服务故障的错误次数++
+				cfg.Report(pathKey(req.URL.Path, true))
 			}
 		}()
 
@@ -189,6 +269,8 @@ func New(namespace string, gConsumer api.ConsumerAPI) *httputil.ReverseProxy {
 
 	errorHandler := func(res http.ResponseWriter, req *http.Request, err error) {
 		res.Write([]byte(err.Error()))
+		// 业务服务处理异常次数++
+		cfg.Report(pathKey(req.URL.Path, true))
 	}
 
 	return &httputil.ReverseProxy{Director: director, ModifyResponse: modifyFunc, ErrorHandler: errorHandler}

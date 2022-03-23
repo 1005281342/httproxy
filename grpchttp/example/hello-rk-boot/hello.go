@@ -35,17 +35,16 @@ func main() {
 	ctx := svc.NewServiceContext(c)
 	srv := server.NewHelloServer(ctx)
 
-	var httpPort uint64
+	// Bootstrap preload entries
+	rkentry.BootstrapPreloadEntryYAML(boot)
+
+	// Bootstrap zero entry from boot config
+	res := rkzero.RegisterZeroEntryYAML(boot)
+
+	// Get ZeroEntry
+	zeroEntry := res["go-zero"].(*rkzero.ZeroEntry)
+
 	go func() {
-		// Bootstrap preload entries
-		rkentry.BootstrapPreloadEntryYAML(boot)
-
-		// Bootstrap zero entry from boot config
-		res := rkzero.RegisterZeroEntryYAML(boot)
-
-		// Get ZeroEntry
-		zeroEntry := res["go-zero"].(*rkzero.ZeroEntry)
-		httpPort = zeroEntry.Port
 
 		// 注册路由
 		grpchttp.RegisterWithGoZero(srv, &hello.ServiceDesc, zeroEntry.Server)
@@ -84,7 +83,7 @@ func main() {
 	}
 
 	// 注册http服务
-	var lo = fmt.Sprintf("0.0.0.0:%d", httpPort)
+	var lo = fmt.Sprintf("0.0.0.0:%d", zeroEntry.Port)
 	fmt.Printf("http: %s \n", lo)
 	if err = polaris.RegitserService(polaris.NewPolarisConfig(lo,
 		polaris.WithServiceName(c.Etcd.Key+"-http"),

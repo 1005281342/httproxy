@@ -8,11 +8,6 @@ import (
 	"github.com/polarismesh/polaris-go/api"
 )
 
-const (
-	errMsgKey = httproxy.ErrMsgKey
-	snSuffix  = httproxy.SnSuffix
-)
-
 var (
 	namespace string
 	gConsumer api.ConsumerAPI
@@ -32,5 +27,8 @@ func main() {
 	}
 	gConsumer = consumer
 
-	http.ListenAndServe("127.0.0.1:2333", httproxy.New(namespace, gConsumer))
+	if err := http.ListenAndServe("127.0.0.1:2338", httproxy.New(namespace, gConsumer,
+		httproxy.WithProm("dev", "./boot.yaml"))); err != nil {
+		panic(err)
+	}
 }

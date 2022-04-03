@@ -29,6 +29,8 @@ curl --location --request POST '127.0.0.1:2333/hello.Hello/Say' \
 ```
 
 ## 使用grpchttp给grpc服务注册HTTP接口 以grpchttp/example/hello为例
+**注意：使用较新的proto工具生产的桩代码是有可导出的Desc对象的，不需要再执行1、2步**
+
 1. 在stub代码目录下添加文件grpchttp.go(其他合法名字也可以)。
 2. 在grpchttp.go文件中添加可导出对象ServiceDesc代码：
     ```shell script
